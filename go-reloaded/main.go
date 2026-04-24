@@ -89,67 +89,32 @@ func isSeparator(c byte) bool {
 
 func applyMarkers(tokens []Token) []Token {
 	for i := 0; i < len(tokens); i++ {
-		if tokens[i].Type == "marker" {
-			marker := tokens[i].Value
-			inner := marker[1 : len(marker)-1]
-			parts := strings.SplitN(inner, ",", 2)
-			cmd := strings.TrimSpace(parts[0])
-			count := 1
-			if len(parts) > 1 {
-				c, err := strconv.Atoi(strings.TrimSpace(parts[1]))
-				if err == nil {
-					count = c
-				}
-			}
-
-			type wordInfo struct {
-				index int
-				dist  int
-			}
-
-			// Amended: Search for available words in both directions to decide priority
-			var backwardWords []wordInfo
-			for j := i - 1; j >= 0 && len(backwardWords) < count; j-- {
-				if tokens[j].Type == "word" {
-					backwardWords = append(backwardWords, wordInfo{j, i - j})
-				}
-			}
-
-			var forwardWords []wordInfo
-			for j := i + 1; j < len(tokens) && len(forwardWords) < count; j++ {
-				if tokens[j].Type == "word" {
-					forwardWords = append(forwardWords, wordInfo{j, j - i})
-				}
-			}
-
-			// Amended: Logic to prioritize direction based on count satisfaction and distance
-			useForward := false
-			if len(forwardWords) > len(backwardWords) {
-				useForward = true
-			} else if len(forwardWords) == len(backwardWords) && len(forwardWords) > 0 {
-				if forwardWords[0].dist < backwardWords[0].dist {
-					useForward = true
-				} else if forwardWords[0].dist == backwardWords[0].dist {
-					// Amended: Tie-breaking based on command type (cap, hex, bin prefer forward)
-					if cmd == "cap" || cmd == "hex" || cmd == "bin" {
-						useForward = true
-					}
-				}
-			}
-
-			if useForward {
-				for _, w := range forwardWords {
-					tokens[w.index].Value = transformWord(tokens[w.index].Value, cmd)
-				}
-			} else {
-				for _, w := range backwardWords {
-					tokens[w.index].Value = transformWord(tokens[w.index].Value, cmd)
-				}
-			}
-
-			tokens = append(tokens[:i], tokens[i+1:]...)
-			i--
+		if tokens[i].Type != "marker" {
+			continue
 		}
+		// parse marker
+		inner := tokens[i].Value[1 : len(tokens[i].Value)-1]
+		parts := strings.SplitN(inner, ",", 2)
+		cmd := parts[0]
+		count := 1
+		if len(parts) > 1 {
+			if c, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+				count = c
+			}
+		}
+
+		// apply to previous words (backward only)
+		applied := 0
+		for j := i - 1; j >= 0 && applied < count; j-- {
+			if tokens[j].Type == "word" {
+				tokens[j].Value = transformWord(tokens[j].Value, cmd)
+				applied++
+			}
+		}
+
+		// remove marker
+		tokens = append(tokens[:i], tokens[i+1:]...)
+		i-- // adjust index after removal
 	}
 	return tokens
 }
@@ -185,7 +150,7 @@ func transformWord(word, cmd string) string {
 }
 
 func fixArticles(tokens []Token) []Token {
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		if tokens[i].Type != "word" {
 			continue
 		}
